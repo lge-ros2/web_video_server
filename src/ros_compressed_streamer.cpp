@@ -18,6 +18,10 @@ RosCompressedStreamer::~RosCompressedStreamer()
 
 void RosCompressedStreamer::start() {
   std::string compressed_topic = topic_ + "/compressed";
+  if (topic_.find("/compressed") != std::string::npos) {
+    compressed_topic = topic_;
+  }
+
   image_sub_ = nh_->create_subscription<sensor_msgs::msg::CompressedImage>(
     compressed_topic, std::bind(&RosCompressedStreamer::imageCallback, this, std::placeholders::_1), 1);
 }

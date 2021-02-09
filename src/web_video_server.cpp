@@ -53,11 +53,13 @@ WebVideoServer::WebVideoServer(rclcpp::Node::SharedPtr &nh, rclcpp::Node::Shared
         async_web_server_cpp::HttpReply::stock_reply(async_web_server_cpp::HttpReply::not_found))
 {
   rclcpp::Parameter parameter;
-  if (private_nh->get_parameter("port", parameter)) {
-    port_ = parameter.as_int();
-  } else {
-    port_ = 8080;
-  }
+  // if (private_nh->get_parameter("port", parameter)) {
+  //   port_ = parameter.as_int();
+  // } else {
+  //   port_ = 18888;
+  // }
+  port_ = private_nh->declare_parameter("port", 18888);
+
   if (private_nh->get_parameter("verbose", parameter)) {
     __verbose = parameter.as_bool();
   } else {
@@ -91,7 +93,8 @@ WebVideoServer::WebVideoServer(rclcpp::Node::SharedPtr &nh, rclcpp::Node::Shared
   if (private_nh->get_parameter("default_stream_type", parameter)) {
     __default_stream_type = parameter.as_string();
   } else {
-    __default_stream_type = "mjpeg";
+    // __default_stream_type = "mjpeg";
+    __default_stream_type = "ros_compressed";
   }
 
   stream_types_["mjpeg"] = boost::shared_ptr<ImageStreamerType>(new MjpegStreamerType());
@@ -195,6 +198,10 @@ bool WebVideoServer::handle_stream(const async_web_server_cpp::HttpRequest &requ
           break;
         }
         auto & topic_name = topic_and_types.first;
+        if (topic_name.find("/compressed") != std::string::npos) {
+          did_find_compressed_topic = true;
+          break;
+        }
         if(topic_name == compressed_topic_name || (topic_name.find("/") == 0 && topic_name.substr(1) == compressed_topic_name)){
           did_find_compressed_topic = true;
           break;
@@ -242,7 +249,6 @@ bool WebVideoServer::handle_stream_viewer(const async_web_server_cpp::HttpReques
     // Fallback for topics without corresponding compressed topics
     if (type == std::string("ros_compressed"))
     {
-
       std::string compressed_topic_name = topic + "/compressed";
       auto tnat = nh_->get_topic_names_and_types();
       bool did_find_compressed_topic = false;
@@ -252,6 +258,10 @@ bool WebVideoServer::handle_stream_viewer(const async_web_server_cpp::HttpReques
           break;
         }
         auto & topic_name = topic_and_types.first;
+        if (topic_name.find("/compressed") != std::string::npos) {
+          did_find_compressed_topic = true;
+          break;
+        }
         if(topic_name == compressed_topic_name || (topic_name.find("/") == 0 && topic_name.substr(1) == compressed_topic_name)){
           did_find_compressed_topic = true;
           break;
@@ -263,7 +273,6 @@ bool WebVideoServer::handle_stream_viewer(const async_web_server_cpp::HttpReques
         type = "mjpeg";
       }
     }
-
     async_web_server_cpp::HttpReply::builder(async_web_server_cpp::HttpReply::ok).header("Connection", "close").header(
         "Server", "web_video_server").header("Content-type", "text/html;").write(connection);
 
@@ -287,6 +296,7 @@ bool WebVideoServer::handle_list_streams(const async_web_server_cpp::HttpRequest
                                          const char* end)
 {
   std::vector<std::string> image_topics;
+  std::vector<std::string> compressed_image_topics;
   std::vector<std::string> camera_info_topics;
   auto tnat = nh_->get_topic_names_and_types();
   for (auto topic_and_types : tnat) {
@@ -297,12 +307,16 @@ bool WebVideoServer::handle_list_streams(const async_web_server_cpp::HttpRequest
     auto & topic_name = topic_and_types.first;
     auto & topic_type = topic_and_types.second[0];  // explicitly take the first
     // TODO debugging
-    fprintf(stderr, "topic_type: %s\n", topic_type.c_str());
-    if (topic_type == "sensor_msgs/Image")
+    // fprintf(stderr, "topic_type: %s\n", topic_type.c_str());
+    if (topic_type == "sensor_msgs/msg/Image" || topic_type == "sensor_msgs/Image")
     {
       image_topics.push_back(topic_name);
     }
-    else if (topic_type == "sensor_msgs/CameraInfo")
+    else if (topic_type == "sensor_msgs/msg/CompressedImage" || topic_type == "sensor_msgs/CompressedImage")
+    {
+      compressed_image_topics.push_back(topic_name);
+    }
+    else if (topic_type == "sensor_msgs/msg/CameraInfo" || topic_type == "sensor_msgs/CameraInfo")
     {
       camera_info_topics.push_back(topic_name);
     }
@@ -367,6 +381,23 @@ bool WebVideoServer::handle_list_streams(const async_web_server_cpp::HttpRequest
     connection->write("</li>");
 
     image_topic_itr = image_topics.erase(image_topic_itr);
+  }
+  connection->write("</ul>");
+  // Add the compressed image topics
+  connection->write("<ul>");
+  std::vector<std::string>::iterator compressed_image_topic_itr = compressed_image_topics.begin();
+  for (; compressed_image_topic_itr != compressed_image_topics.end();) {
+    connection->write("<li><a href=\"/stream_viewer?topic=");
+    connection->write(*compressed_image_topic_itr);
+    connection->write("\">");
+    connection->write(*compressed_image_topic_itr);
+    connection->write("</a> (");
+    connection->write("<a href=\"/snapshot?topic=");
+    connection->write(*compressed_image_topic_itr);
+    connection->write("\">Snapshot</a>)");
+    connection->write("</li>");
+
+    compressed_image_topic_itr = compressed_image_topics.erase(compressed_image_topic_itr);
   }
   connection->write("</ul></body></html>");
   return true;

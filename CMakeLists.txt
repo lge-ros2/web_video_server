@@ -81,3 +81,8 @@ install(DIRECTORY include/${PROJECT_NAME}/
    DESTINATION include/${PROJECT_NAME}
    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp"
 )
+
+install(
+  DIRECTORY config launch
+  DESTINATION share/${PROJECT_NAME}
+)
